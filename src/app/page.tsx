@@ -1,53 +1,51 @@
+import { Button } from "@/components/ui/button";
+import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
-
-import { LatestPost } from "@/app/_components/post";
-import { api, HydrateClient } from "@/trpc/server";
+import { ArrowRight, LogIn } from "lucide-react";
+import { auth } from "@clerk/nextjs/server";
 
 export default async function Home() {
-  const hello = await api.post.hello({ text: "from tRPC" });
-
-  void api.post.getLatest.prefetch();
+  const { isAuthenticated } = await auth();
 
   return (
-    <HydrateClient>
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
-        <div className="container flex flex-col items-center justify-center gap-12 px-4 py-16">
-          <h1 className="text-5xl font-extrabold tracking-tight sm:text-[5rem]">
-            Create <span className="text-[hsl(280,100%,70%)]">T3</span> App
-          </h1>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-8">
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/usage/first-steps"
-              target="_blank"
-            >
-              <h3 className="text-2xl font-bold">First Steps →</h3>
-              <div className="text-lg">
-                Just the basics - Everything you need to know to set up your
-                database and authentication.
-              </div>
-            </Link>
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/introduction"
-              target="_blank"
-            >
-              <h3 className="text-2xl font-bold">Documentation →</h3>
-              <div className="text-lg">
-                Learn more about Create T3 App, the libraries it uses, and how
-                to deploy it.
-              </div>
-            </Link>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-2xl text-white">
-              {hello ? hello.greeting : "Loading tRPC query..."}
-            </p>
+    <div className="min-h-screen w-screen bg-gradient-to-r from-rose-100 to-teal-100">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="flex flex-col items-center text-center">
+          <div className="flex items-center">
+            <h1 className="mr-3 text-5xl font-semibold">Chat with any PDF</h1>
+            <UserButton afterSignOutUrl="/" />
           </div>
 
-          <LatestPost />
+          {isAuthenticated && (
+            <div className="mt-2 flex gap-3">
+              <Link href="/chat">
+                <Button>
+                  Go to Chats <ArrowRight className="ml-2" />
+                </Button>
+              </Link>
+              <div>Subscription button</div>
+            </div>
+          )}
+
+          <p className="mt-3 max-w-xl text-lg text-slate-600">
+            Join millions of students, researchers and professionals to
+            instantly answer questions and understand research with AI
+          </p>
+
+          <div className="mt-4 w-full">
+            {isAuthenticated ? (
+              <div>File Upload component </div>
+            ) : (
+              <Link href="/sign-in">
+                <Button>
+                  Login to get Started!
+                  <LogIn className="ml-2 size-4" />
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
-      </main>
-    </HydrateClient>
+      </div>
+    </div>
   );
 }
