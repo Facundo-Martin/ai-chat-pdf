@@ -3,6 +3,7 @@ import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { ArrowRight, LogIn } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
+import { FileUpload } from "@/components/file-upload";
 
 export default async function Home() {
   const { isAuthenticated } = await auth();
@@ -34,7 +35,7 @@ export default async function Home() {
 
           <div className="mt-4 w-full">
             {isAuthenticated ? (
-              <div>File Upload component </div>
+              <FileUpload />
             ) : (
               <Link href="/sign-in">
                 <Button>
