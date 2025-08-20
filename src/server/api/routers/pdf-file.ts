@@ -13,6 +13,17 @@ import { pipeline } from "stream/promises";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { type Document as LangChainDocument } from "@langchain/core/documents";
 
+import {
+  Document,
+  RecursiveCharacterTextSplitter,
+} from "@pinecone-database/doc-splitter";
+import { openAIService } from "@/lib/openai";
+
+import md5 from "md5";
+import type { PineconeRecord } from "@pinecone-database/pinecone";
+import { pc } from "@/lib/pinecone";
+import { convertToAscii } from "@/lib/utils";
+
 export const pdfFileRouter = createTRPCRouter({
   // Get presigned URL for uploading PDF
   getUploadUrl: protectedProcedure
@@ -71,26 +82,28 @@ export const pdfFileRouter = createTRPCRouter({
 
         // Step 3: Load and parse PDF with LangChain
         const loader = new PDFLoader(filePath);
-        const docs: LangChainDocument[] = await loader.load();
+        const pages: LangChainDocument[] = await loader.load();
 
-        console.log(`PDF parsed into ${docs.length} documents`);
+        console.log(`PDF parsed into ${pages.length} pages`);
 
-        const processedDocs: ProcessedPDFDocument[] = docs.map((doc, index) => {
-          console.log(`\n📄 Document ${index + 1}:`);
-          console.log(`📝 Content (${doc.pageContent.length} characters):`);
-          console.log(doc.pageContent);
-          console.log(`📋 Metadata:`, doc.metadata);
-          console.log("=".repeat(80));
+        const processedDocs: ProcessedPDFDocument[] = pages.map(
+          (doc, index) => {
+            console.log(`\n📄 Document ${index + 1}:`);
+            console.log(`📝 Content (${doc.pageContent.length} characters):`);
+            console.log(doc.pageContent);
+            console.log(`📋 Metadata:`, doc.metadata);
+            console.log("=".repeat(80));
 
-          return {
-            pageContent: doc.pageContent,
-            metadata: doc.metadata as PDFMetadata,
-            id: doc.id,
-          };
-        });
+            return {
+              pageContent: doc.pageContent,
+              metadata: doc.metadata as PDFMetadata,
+              id: doc.id,
+            };
+          },
+        );
 
         // Log all the chunks
-        docs.forEach((doc, index) => {
+        processedDocs.forEach((doc, index) => {
           console.log(`\n📄 Document ${index + 1}:`);
           console.log(`📝 Content (${doc.pageContent.length} characters):`);
           console.log(doc.pageContent);
@@ -98,6 +111,24 @@ export const pdfFileRouter = createTRPCRouter({
           console.log("=".repeat(80)); // Separator line
         });
 
+        // Split and segment the pdf
+        const documents = await Promise.all(
+          processedDocs.map((page) => prepareDocument(page)),
+        );
+
+        // Vectorize and embed individual documents
+        const vectors = await Promise.all(documents.flat().map(embedDocument));
+
+        // Upload to pinecone
+        const pineconeIndex = pc.index("chatpdf");
+        const namespace = pineconeIndex.namespace(
+          convertToAscii(input.fileKey),
+        );
+
+        console.log("inserting vectors into pinecone");
+        await namespace.upsert(vectors);
+
+        return documents[0];
         // TODO: Add Pinecone vector storage logic
         const result = {
           success: true,
@@ -132,3 +163,44 @@ export const pdfFileRouter = createTRPCRouter({
       }
     }),
 });
+
+async function embedDocument(doc: Document) {
+  try {
+    const embeddings = await openAIService.getEmbeddings(doc.pageContent);
+    const hash = md5(doc.pageContent);
+
+    // TODO: Fix this
+    return {
+      id: hash,
+      values: embeddings as number[],
+      metadata: {
+        text: doc.metadata.text,
+        pageNumber: doc.metadata.pageNumber,
+      },
+    } as PineconeRecord;
+  } catch (error) {
+    console.log("error embedding document", error);
+    throw error;
+  }
+}
+
+async function prepareDocument(page: ProcessedPDFDocument) {
+  const pageContent = page.pageContent.replace(/\n/g, "");
+  // split the docs
+  const splitter = new RecursiveCharacterTextSplitter();
+  const docs = await splitter.splitDocuments([
+    new Document({
+      pageContent,
+      metadata: {
+        pageNumber: page.metadata.loc.pageNumber,
+        text: truncateStringByBytes(pageContent, 36000),
+      },
+    }),
+  ]);
+  return docs;
+}
+
+export const truncateStringByBytes = (str: string, bytes: number) => {
+  const encoder = new TextEncoder();
+  return new TextDecoder("utf-8").decode(encoder.encode(str).slice(0, bytes));
+};
