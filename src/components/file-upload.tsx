@@ -11,6 +11,7 @@ import { toast } from "sonner";
 export function FileUpload() {
   const router = useRouter();
   const createChatMutation = api.chat.create.useMutation();
+  const loadIntoPineconeMutation = api.pdfFile.loadIntoPinecone.useMutation();
 
   const {
     uploadFile,
@@ -29,7 +30,25 @@ export function FileUpload() {
 
         if (newChat) {
           toast.success("Chat created successfully!");
-          router.push(`/chat/${newChat.id}`);
+
+          // Step 2: Process the PDF
+          try {
+            console.log("🔄 Processing PDF into vector embeddings...");
+            const result = await loadIntoPineconeMutation.mutateAsync({
+              fileKey,
+            });
+
+            console.log("✅ PDF processing successful:", result);
+            toast.success(`PDF processed! Found ${result.documentCount} pages`);
+
+            // TODO: Uncomment when ready to redirect
+            // router.push(`/chat/${newChat.id}`);
+          } catch (pdfError) {
+            console.error("❌ PDF processing failed:", pdfError);
+            toast.error("PDF processing failed, but chat was created");
+            // Still could redirect to chat even if PDF processing fails
+            // router.push(`/chat/${newChat.id}`);
+          }
         }
       } catch (error) {
         console.error("Failed to create chat:", error);
@@ -50,7 +69,12 @@ export function FileUpload() {
     },
   });
 
-  const isProcessing = isLoading || createChatMutation.isPending;
+  const isProcessing =
+    isLoading ||
+    createChatMutation.isPending ||
+    loadIntoPineconeMutation.isPending;
+  const hasError =
+    isError || createChatMutation.isError || loadIntoPineconeMutation.isError;
 
   return (
     <div className="rounded-xl bg-white p-2">
@@ -60,44 +84,48 @@ export function FileUpload() {
             "border-dashed border-2 rounded-xl cursor-pointer bg-gray-50 py-8 flex justify-center items-center flex-col transition-all",
             {
               "opacity-50 cursor-not-allowed border-gray-300": isProcessing,
-              "border-green-300 bg-green-50":
-                isSuccess && !createChatMutation.isPending,
-              "border-red-300 bg-red-50": isError || createChatMutation.isError,
+              "border-green-300 bg-green-50": isSuccess && !isProcessing,
+              "border-red-300 bg-red-50": hasError,
               "hover:bg-gray-100 border-gray-300":
-                !isProcessing && !isSuccess && !isError,
+                !isProcessing && !isSuccess && !hasError,
             },
           ),
         })}
       >
         <input {...getInputProps()} disabled={isProcessing} />
 
-        {isSuccess && !createChatMutation.isPending ? (
+        {isSuccess && !isProcessing ? (
           <>
-            <CheckCircle className="size-10 text-green-500" />
-            <p className="mt-2 text-sm text-green-600">Upload successful!</p>
+            <CheckCircle className="h-10 w-10 text-green-500" />
+            <p className="mt-2 text-sm text-green-600">Processing complete!</p>
           </>
         ) : isProcessing ? (
           <>
-            <Loader2 className="size-10 animate-spin text-blue-500" />
+            <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
             <p className="mt-2 text-sm text-slate-400">
               {isPreparing && "Preparing upload..."}
               {isUploading && "Uploading your PDF..."}
               {createChatMutation.isPending && "Creating chat..."}
+              {loadIntoPineconeMutation.isPending &&
+                "Processing PDF content..."}
             </p>
           </>
         ) : (
           <>
-            <Inbox className="size-10 text-blue-500" />
+            <Inbox className="h-10 w-10 text-blue-500" />
             <p className="mt-2 text-sm text-slate-400">
               Drop PDF here or click to upload
             </p>
             <p className="text-xs text-slate-300">Max size: 10MB</p>
-            {(isError || createChatMutation.isError) && (
+            {hasError && (
               <div className="mt-2 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3 text-red-500" />
                 <p className="text-xs text-red-500">
-                  {isError ? "Upload failed." : "Failed to create chat."} Try
-                  again.
+                  {isError && "Upload failed."}
+                  {createChatMutation.isError && "Chat creation failed."}
+                  {loadIntoPineconeMutation.isError &&
+                    "PDF processing failed."}{" "}
+                  Try again.
                 </p>
               </div>
             )}
