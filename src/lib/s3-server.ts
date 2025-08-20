@@ -13,7 +13,7 @@ const s3Client = new S3Client({
   },
 });
 
-export class S3Service {
+class S3Service {
   private bucketName = env.AWS_S3_BUCKET_NAME;
   private region = env.AWS_S3_REGION;
 
