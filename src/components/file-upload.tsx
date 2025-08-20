@@ -73,12 +73,12 @@ export function FileUpload() {
 
         {isSuccess && !createChatMutation.isPending ? (
           <>
-            <CheckCircle className="h-10 w-10 text-green-500" />
+            <CheckCircle className="size-10 text-green-500" />
             <p className="mt-2 text-sm text-green-600">Upload successful!</p>
           </>
         ) : isProcessing ? (
           <>
-            <Loader2 className="h-10 w-10 animate-spin text-blue-500" />
+            <Loader2 className="size-10 animate-spin text-blue-500" />
             <p className="mt-2 text-sm text-slate-400">
               {isPreparing && "Preparing upload..."}
               {isUploading && "Uploading your PDF..."}
@@ -87,7 +87,7 @@ export function FileUpload() {
           </>
         ) : (
           <>
-            <Inbox className="h-10 w-10 text-blue-500" />
+            <Inbox className="size-10 text-blue-500" />
             <p className="mt-2 text-sm text-slate-400">
               Drop PDF here or click to upload
             </p>
