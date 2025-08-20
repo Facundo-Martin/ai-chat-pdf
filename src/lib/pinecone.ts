@@ -1,10 +1,15 @@
+// lib/pinecone.ts
 import { env } from "@/env";
 import { Pinecone, type PineconeRecord } from "@pinecone-database/pinecone";
-import { convertToAscii } from "@/lib/utils";
+import { type Document } from "@pinecone-database/doc-splitter";
+import { convertToAscii, splitPage } from "@/lib/utils";
+import { openAIService } from "@/lib/openai";
+import type { ProcessedPDFDocument } from "@/types/pdf";
+import md5 from "md5";
 
 class PineconeService {
   private client: Pinecone;
-  private indexName = "ai-chat-pdf"; // The name of our application in app.pinecone.io
+  private indexName = "chatpdf";
 
   constructor() {
     this.client = new Pinecone({
@@ -12,21 +17,11 @@ class PineconeService {
     });
   }
 
-  /**
-   * Get a namespace for a specific file
-   * @param fileKey - Unique identifier for the file
-   * @returns Pinecone namespace
-   */
   public getNamespace(fileKey: string) {
     const index = this.client.index(this.indexName);
     return index.namespace(convertToAscii(fileKey));
   }
 
-  /**
-   * Store vectors in Pinecone
-   * @param fileKey - File identifier for namespace
-   * @param vectors - Array of vectors to store
-   */
   public async upsertVectors(
     fileKey: string,
     vectors: PineconeRecord[],
@@ -41,6 +36,53 @@ class PineconeService {
       console.error("Error upserting vectors to Pinecone:", error);
       throw new Error(
         `Failed to store vectors: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
+  }
+
+  public async processAndStore(
+    fileKey: string,
+    pages: ProcessedPDFDocument[],
+  ): Promise<{ vectorCount: number }> {
+    console.log(`🔄 Processing ${pages.length} pages...`);
+
+    // 1. Split pages into chunks (using util function)
+    const allDocuments = await Promise.all(pages.map(splitPage));
+    const flatDocuments = allDocuments.flat();
+    console.log(`📄 Split into ${flatDocuments.length} chunks`);
+
+    // 2. Generate embeddings (Pinecone-specific)
+    const vectors = await Promise.all(
+      flatDocuments.map((doc) => this.embedDocument(doc)),
+    );
+    console.log(`🔢 Generated ${vectors.length} embeddings`);
+
+    // Store in Pinecone
+    await this.upsertVectors(fileKey, vectors);
+
+    return { vectorCount: vectors.length };
+  }
+
+  /**
+   * Generate embeddings for a document and create a Pinecone record
+   */
+  private async embedDocument(doc: Document): Promise<PineconeRecord> {
+    try {
+      const embeddings = await openAIService.getEmbeddings(doc.pageContent);
+      const hash = md5(doc.pageContent);
+
+      return {
+        id: hash,
+        values: embeddings,
+        metadata: {
+          text: doc.metadata.text as string,
+          pageNumber: doc.metadata.pageNumber as number,
+        },
+      };
+    } catch (error) {
+      console.error("Error embedding document:", error);
+      throw new Error(
+        `Failed to embed document: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
