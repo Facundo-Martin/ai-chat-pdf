@@ -3,6 +3,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 
 import { s3Service } from "@/lib/s3-server";
+import type { PDFMetadata, ProcessedPDFDocument } from "@/types/pdf";
 
 import { join } from "path";
 import { unlink } from "fs/promises";
@@ -10,6 +11,7 @@ import { createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
 
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { type Document as LangChainDocument } from "@langchain/core/documents";
 
 export const pdfFileRouter = createTRPCRouter({
   // Get presigned URL for uploading PDF
@@ -69,9 +71,23 @@ export const pdfFileRouter = createTRPCRouter({
 
         // Step 3: Load and parse PDF with LangChain
         const loader = new PDFLoader(filePath);
-        const docs = await loader.load();
+        const docs: LangChainDocument[] = await loader.load();
 
         console.log(`PDF parsed into ${docs.length} documents`);
+
+        const processedDocs: ProcessedPDFDocument[] = docs.map((doc, index) => {
+          console.log(`\n📄 Document ${index + 1}:`);
+          console.log(`📝 Content (${doc.pageContent.length} characters):`);
+          console.log(doc.pageContent);
+          console.log(`📋 Metadata:`, doc.metadata);
+          console.log("=".repeat(80));
+
+          return {
+            pageContent: doc.pageContent,
+            metadata: doc.metadata as PDFMetadata,
+            id: doc.id,
+          };
+        });
 
         // Log all the chunks
         docs.forEach((doc, index) => {
@@ -83,13 +99,14 @@ export const pdfFileRouter = createTRPCRouter({
         });
 
         // TODO: Add Pinecone vector storage logic
-
-        return {
+        const result = {
           success: true,
-          documentCount: docs.length,
-          message: `Successfully processed ${docs.length} document pages`,
-          preview: docs[0]?.pageContent.substring(0, 200) + "...",
+          documentCount: processedDocs.length,
+          message: `Successfully processed ${processedDocs.length} document pages`,
+          documents: processedDocs,
         };
+
+        return result;
       } catch (error) {
         console.error("Error in loadIntoPinecone:", error);
         throw new TRPCError({
