@@ -2,7 +2,12 @@
 
 import { env } from "@/env";
 
-import { S3Client } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  GetObjectCommand,
+  NoSuchKey,
+  S3ServiceException,
+} from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
 const s3Client = new S3Client({
@@ -17,7 +22,30 @@ class S3Service {
   private bucketName = env.AWS_S3_BUCKET_NAME;
   private region = env.AWS_S3_REGION;
 
-  async createPresignedPost(
+  /**
+   * Creates a presigned POST for direct client-side file uploads to S3.
+   *
+   * This allows the frontend to upload files directly to S3 without routing through our server,
+   * which provides several benefits:
+   * - Reduces server bandwidth and processing load
+   * - Faster uploads (direct to S3, no proxy through our server)
+   * - Better scalability (S3 handles the upload traffic)
+   * - Cost efficiency (no data transfer costs through our server)
+   *
+   * Presigned POST vs Presigned URL:
+   * - POST: More secure with granular conditions (file size, type, metadata)
+   * - POST: Can enforce specific form fields and validation rules
+   * - POST: Better for HTML forms and multipart uploads
+   * - URL: Simpler but less control over upload constraints
+   *
+   * @see https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-aws-sdk-s3-presigned-post/
+   * @see https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-HTTPPOSTConstructPolicy.html
+   * @param fileName - Original file name (will be sanitized)
+   * @param fileType - MIME type of the file (e.g., "application/pdf")
+   * @param userId - User ID for organizing uploads and metadata
+   * @returns Object containing upload URL, form fields, and the S3 key
+   */
+  public async createPresignedPost(
     fileName: string,
     fileType: string,
     userId: string,
@@ -55,8 +83,52 @@ class S3Service {
     }
   }
 
-  // Helper method to get public URL from key
-  getPublicUrl(key: string): string {
+  /**
+   * Retrieves an object from S3 by its key.
+   *
+   * @param key - The S3 object key (path within the bucket)
+   * @returns Promise resolving to the object's body as a readable stream
+   * @throws Error if the object doesn't exist or access is denied
+   */
+  public async getObject(key: string) {
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      const response = await s3Client.send(command);
+
+      if (!response.Body) {
+        throw new Error(`Object not found: ${key}`);
+      }
+
+      return response.Body;
+    } catch (error) {
+      if (error instanceof NoSuchKey) {
+        console.error(
+          `Error from S3 while getting object "${key}" from "${this.bucketName}". No such key exists.`,
+        );
+        throw new Error(`Object not found: ${key}`);
+      } else if (error instanceof S3ServiceException) {
+        console.error(
+          `Error from S3 while getting object from ${this.bucketName}. ${error.name}: ${error.message}`,
+        );
+        throw new Error(`S3 service error: ${error.message}`);
+      } else {
+        console.error(`Unexpected error retrieving object ${key}:`, error);
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Constructs a public S3 URL from an object key.
+   *
+   * @param key - The S3 object key (path within the bucket)
+   * @returns Public HTTPS URL to access the object
+   */
+  public getPublicUrl(key: string): string {
     return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
   }
 }
