@@ -16,6 +16,7 @@ export const env = createEnv({
     AWS_S3_ACCESS_KEY_ID: z.string(),
     AWS_S3_SECRET_ACCESS_KEY: z.string(),
     AWS_S3_BUCKET_NAME: z.string(),
+    PINECONE_API_KEY: z.string(),
   },
 
   /**
@@ -44,6 +45,7 @@ export const env = createEnv({
     AWS_S3_ACCESS_KEY_ID: process.env.AWS_S3_ACCESS_KEY_ID,
     AWS_S3_SECRET_ACCESS_KEY: process.env.AWS_S3_SECRET_ACCESS_KEY,
     AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
+    PINECONE_API_KEY: process.env.PINECONE_API_KEY,
     // Client
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
