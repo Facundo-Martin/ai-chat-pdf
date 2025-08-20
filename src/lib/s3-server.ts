@@ -1,7 +1,6 @@
 "server-only";
 
 import { env } from "@/env";
-
 import {
   S3Client,
   GetObjectCommand,
@@ -10,17 +9,20 @@ import {
 } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
-const s3Client = new S3Client({
-  region: env.AWS_S3_REGION,
-  credentials: {
-    accessKeyId: env.AWS_S3_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_S3_SECRET_ACCESS_KEY,
-  },
-});
-
 class S3Service {
+  private client: S3Client;
   private bucketName = env.AWS_S3_BUCKET_NAME;
   private region = env.AWS_S3_REGION;
+
+  constructor() {
+    this.client = new S3Client({
+      region: this.region,
+      credentials: {
+        accessKeyId: env.AWS_S3_ACCESS_KEY_ID,
+        secretAccessKey: env.AWS_S3_SECRET_ACCESS_KEY,
+      },
+    });
+  }
 
   /**
    * Creates a presigned POST for direct client-side file uploads to S3.
@@ -54,7 +56,7 @@ class S3Service {
     const key = `uploads/${userId}/${Date.now()}-${sanitizedFileName}`;
 
     try {
-      const { url, fields } = await createPresignedPost(s3Client, {
+      const { url, fields } = await createPresignedPost(this.client, {
         Bucket: this.bucketName,
         Key: key,
         Conditions: [
@@ -97,7 +99,7 @@ class S3Service {
         Key: key,
       });
 
-      const response = await s3Client.send(command);
+      const response = await this.client.send(command);
 
       if (!response.Body) {
         throw new Error(`Object not found: ${key}`);
