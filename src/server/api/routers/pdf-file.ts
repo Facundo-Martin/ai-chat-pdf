@@ -18,7 +18,7 @@ export const pdfFileRouter = createTRPCRouter({
       const userId = ctx.user.userId;
 
       try {
-        const { url, fields, key } = await s3Service.getUploadPresignedUrl(
+        const { url, fields, key } = await s3Service.createPresignedPost(
           fileName,
           fileType,
           userId,

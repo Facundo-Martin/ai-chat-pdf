@@ -15,8 +15,9 @@ const s3Client = new S3Client({
 
 export class S3Service {
   private bucketName = env.AWS_S3_BUCKET_NAME;
+  private region = env.AWS_S3_REGION;
 
-  async getUploadPresignedUrl(
+  async createPresignedPost(
     fileName: string,
     fileType: string,
     userId: string,
@@ -43,34 +44,21 @@ export class S3Service {
         Expires: 300, // 5 minutes
       });
 
-      return { url, fields, key };
+      return {
+        url,
+        fields,
+        key,
+      };
     } catch (error) {
-      console.error("Error creating presigned URL:", error);
+      console.error("Error creating presigned post:", error);
       throw new Error("Failed to create upload URL");
     }
+  }
+
+  // Helper method to get public URL from key
+  getPublicUrl(key: string): string {
+    return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
   }
 }
 
 export const s3Service = new S3Service();
-
-async function testS3Service() {
-  try {
-    console.log("🧪 Testing S3 Service...");
-
-    const result = await s3Service.getUploadPresignedUrl(
-      "test-document.pdf",
-      "application/pdf",
-      "test-user-123",
-    );
-
-    console.log("✅ Success! Generated presigned URL:");
-    console.log("📁 File Key:", result.key);
-    console.log("🔗 Upload URL:", result.url);
-    console.log("📋 Form Fields:", result.fields);
-    console.log("⏰ URL expires in 5 minutes");
-  } catch (error) {
-    console.error("❌ Test failed:", error);
-  }
-}
-
-await testS3Service();
