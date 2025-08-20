@@ -1,41 +1,38 @@
 import { env } from "@/env";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: env.OPENAI_API_KEY,
-});
-
-const response = await client.responses.create({
-  model: "gpt-4o",
-  instructions: "You are a coding assistant that talks like a pirate",
-  input: "Are semicolons optional in JavaScript?",
-});
-
-console.log(response.output_text);
-
-const embedding = await client.embeddings.create({
-  model: "text-embedding-3-small",
-  input: "Your text string goes here",
-  encoding_format: "float",
-});
-
-console.log(embedding);
-
 class OpenAIService {
-  public async getEmbeddings(text: string) {
+  private client: OpenAI;
+
+  constructor() {
+    this.client = new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+    });
+  }
+
+  /**
+   * Generate embeddings for the given text
+   * @param text - Text to embed
+   * @returns Array of embedding values
+   */
+  public async getEmbeddings(text: string): Promise<number[]> {
     try {
-      const response = await client.embeddings.create(
+      const cleanText = text.replace(/\n/g, " ");
+
+      const response = await this.client.embeddings.create(
         {
           model: "text-embedding-3-small",
-          input: text.replace(/\n/g, " "),
+          input: cleanText,
         },
         { maxRetries: 5 },
       );
 
-      return response.data;
-    } catch (err) {
-      console.error("Error calling openai embeddings API:", err);
-      throw new Error();
+      return response.data[0]?.embedding ?? [];
+    } catch (error) {
+      console.error("Error calling OpenAI embeddings API:", error);
+      throw new Error(
+        `Failed to generate embeddings: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
     }
   }
 }
