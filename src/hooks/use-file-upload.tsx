@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-
 import { api } from "@/trpc/react";
-
 import { toast } from "sonner";
 
 type UploadStatus = "idle" | "preparing" | "uploading" | "success" | "error";
 
-export function useFileUpload() {
+interface UseFileUploadOptions {
+  onSuccess?: (fileKey: string, fileName: string) => void | Promise<void>;
+  onError?: (error: Error) => void;
+}
+
+export function useFileUpload(options?: UseFileUploadOptions) {
   const [status, setStatus] = useState<UploadStatus>("idle");
   const uploadMutation = api.pdfFile.getUploadUrl.useMutation();
 
@@ -46,11 +49,10 @@ export function useFileUpload() {
       setStatus("success");
       toast.success(`File "${file.name}" uploaded successfully!`);
 
-      // TODO: Add your success logic here
-      console.log("🎉 File uploaded successfully:", {
-        fileKey,
-        fileName: file.name,
-      });
+      // Call success callback if provided
+      if (options?.onSuccess) {
+        await options.onSuccess(fileKey, file.name);
+      }
 
       // Auto-reset after 5 seconds
       setTimeout(() => setStatus("idle"), 5000);
@@ -58,12 +60,20 @@ export function useFileUpload() {
       return fileKey;
     } catch (error) {
       setStatus("error");
-      console.error("Upload failed:", error);
-      toast.error(error instanceof Error ? error.message : "Upload failed");
+      const errorObj =
+        error instanceof Error ? error : new Error("Upload failed");
+
+      console.error("Upload failed:", errorObj);
+      toast.error(errorObj.message);
+
+      // Call error callback if provided
+      if (options?.onError) {
+        options.onError(errorObj);
+      }
 
       // Auto-reset error state after 5 seconds
       setTimeout(() => setStatus("idle"), 5000);
-      throw error;
+      throw errorObj;
     }
   };
 
