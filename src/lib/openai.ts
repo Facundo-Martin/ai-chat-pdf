@@ -17,12 +17,10 @@ class OpenAIService {
    */
   public async getEmbeddings(text: string): Promise<number[]> {
     try {
-      const cleanText = text.replace(/\n/g, " ");
-
       const response = await this.client.embeddings.create(
         {
           model: "text-embedding-3-small",
-          input: cleanText,
+          input: text.replace(/\n/g, " "),
         },
         { maxRetries: 5 },
       );

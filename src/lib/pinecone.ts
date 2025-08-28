@@ -40,24 +40,24 @@ class PineconeService {
     }
   }
 
-  public async processAndStore(
+  public async processAndStoreVectors(
     fileKey: string,
     pages: ProcessedPDFDocument[],
   ): Promise<{ vectorCount: number }> {
     console.log(`🔄 Processing ${pages.length} pages...`);
 
-    // 1. Split pages into chunks (using util function)
+    // 1. Split pages into chunks
     const allDocuments = await Promise.all(pages.map(splitPage));
     const flatDocuments = allDocuments.flat();
     console.log(`📄 Split into ${flatDocuments.length} chunks`);
 
-    // 2. Generate embeddings (Pinecone-specific)
+    // 2. Generate embeddings object for storage (PineconeRecord)
     const vectors = await Promise.all(
       flatDocuments.map((doc) => this.embedDocument(doc)),
     );
     console.log(`🔢 Generated ${vectors.length} embeddings`);
 
-    // Store in Pinecone
+    // Store in Pinecone DB
     await this.upsertVectors(fileKey, vectors);
 
     return { vectorCount: vectors.length };
