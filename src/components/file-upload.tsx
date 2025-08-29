@@ -41,8 +41,7 @@ export function FileUpload() {
             console.log("✅ PDF processing successful:", result);
             toast.success(`PDF processed! Found ${result.documentCount} pages`);
 
-            // TODO: Uncomment when ready to redirect
-            // router.push(`/chat/${newChat.id}`);
+            router.push(`/chat/${newChat.id}`);
           } catch (pdfError) {
             console.error("❌ PDF processing failed:", pdfError);
             toast.error("PDF processing failed, but chat was created");
