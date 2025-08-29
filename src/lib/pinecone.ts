@@ -1,4 +1,3 @@
-// lib/pinecone.ts
 import { env } from "@/env";
 import { Pinecone, type PineconeRecord } from "@pinecone-database/pinecone";
 import { type Document } from "@pinecone-database/doc-splitter";
@@ -10,20 +9,59 @@ import md5 from "md5";
 /**
  * Service for managing Pinecone vector database operations.
  * Handles document processing, embedding generation, and vector storage.
+ * Automatically creates the required index on initialization.
  */
 class PineconeService {
   private client: Pinecone;
-  private indexName = "chatpdf";
+  private indexName = "ai-chat-pdf";
 
   constructor() {
     this.client = new Pinecone({
       apiKey: env.PINECONE_API_KEY,
     });
+
+    // Create index immediately on service initialization
+    this.createIndex().catch((error) => {
+      console.error("Failed to initialize Pinecone index:", error);
+    });
+  }
+
+  /**
+   * Create the Pinecone index if it doesn't exist.
+   * Uses OpenAI text-embedding-3-small dimensions (1536) and cosine similarity.
+   * This method is called once during service initialization.
+   *
+   * @private
+   * @throws Error if index creation fails
+   */
+  private async createIndex(): Promise<void> {
+    try {
+      await this.client.describeIndex(this.indexName);
+      console.log(`Index "${this.indexName}" already exists`);
+    } catch (error) {
+      console.log(`Creating index "${this.indexName}"...`);
+
+      await this.client.createIndex({
+        name: this.indexName,
+        dimension: 1536, // OpenAI text-embedding-3-small dimensions
+        metric: "cosine",
+        spec: {
+          serverless: {
+            cloud: "aws",
+            region: "us-east-1",
+          },
+        },
+        waitUntilReady: true,
+      });
+
+      console.log(`Index "${this.indexName}" created successfully`);
+    }
   }
 
   /**
    * Get a Pinecone namespace for a specific file.
    * Uses ASCII conversion to ensure valid namespace names.
+   * Assumes the index already exists (created during initialization).
    *
    * @param fileKey - Unique identifier for the file
    * @returns Pinecone namespace instance
@@ -49,7 +87,7 @@ class PineconeService {
 
       console.log(`Inserting ${vectors.length} vectors into Pinecone`);
       await namespace.upsert(vectors);
-      console.log("✅ Vectors successfully inserted");
+      console.log("Vectors successfully inserted");
     } catch (error) {
       console.error("Error upserting vectors to Pinecone:", error);
       throw new Error(
@@ -75,18 +113,18 @@ class PineconeService {
     pages: ProcessedPDFDocument[],
   ): Promise<{ vectorCount: number }> {
     try {
-      console.log(`🔄 Processing ${pages.length} pages...`);
+      console.log(`Processing ${pages.length} pages...`);
 
       // 1. Split pages into chunks
       const allDocuments = await Promise.all(pages.map(splitPage));
       const flatDocuments = allDocuments.flat();
-      console.log(`📄 Split into ${flatDocuments.length} chunks`);
+      console.log(`Split into ${flatDocuments.length} chunks`);
 
       // 2. Generate embeddings for each document chunk
       const vectors = await Promise.all(
         flatDocuments.map((doc) => this.embedDocument(doc)),
       );
-      console.log(`🔢 Generated ${vectors.length} embeddings`);
+      console.log(`Generated ${vectors.length} embeddings`);
 
       // 3. Store vectors in Pinecone
       await this.upsertVectors(fileKey, vectors);
