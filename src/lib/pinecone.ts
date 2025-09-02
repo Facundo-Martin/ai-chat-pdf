@@ -7,8 +7,16 @@ import type { ProcessedPDFDocument } from "@/types/pdf";
 import md5 from "md5";
 
 /**
+ * Metadata structure for stored vectors
+ */
+type VectorMetadata = {
+  text: string;
+  pageNumber: number;
+};
+
+/**
  * Service for managing Pinecone vector database operations.
- * Handles document processing, embedding generation, and vector storage.
+ * Handles document processing, embedding generation, vector storage, and context retrieval.
  * Automatically creates the required index on initialization.
  */
 class PineconeService {
@@ -39,6 +47,7 @@ class PineconeService {
       await this.client.describeIndex(this.indexName);
       console.log(`Index "${this.indexName}" already exists`);
     } catch (error) {
+      console.error(error);
       console.log(`Creating index "${this.indexName}"...`);
 
       await this.client.createIndex({
@@ -134,6 +143,161 @@ class PineconeService {
       console.error("Error in processAndStoreVectors:", error);
       throw new Error(
         `Failed to process and store vectors: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
+  }
+
+  /**
+   * Query vectors similar to the provided embeddings.
+   *
+   * @param embeddings - Query vector embeddings
+   * @param fileKey - File identifier for namespace
+   * @param topK - Number of top matches to return (default: 5)
+   * @param scoreThreshold - Minimum similarity score threshold (default: 0.7)
+   * @returns Array of matching vectors with metadata
+   * @throws Error if query fails
+   */
+  public async getMatchesFromEmbeddings(
+    embeddings: number[],
+    fileKey: string,
+    topK = 5,
+    scoreThreshold = 0.7,
+  ) {
+    try {
+      const namespace = this.getNamespace(fileKey);
+
+      const queryResult = await namespace.query({
+        topK,
+        vector: embeddings,
+        includeMetadata: true,
+      });
+
+      // Filter matches by score threshold
+      const qualifyingMatches = (queryResult.matches || []).filter(
+        (match) => match.score && match.score > scoreThreshold,
+      );
+
+      return qualifyingMatches;
+    } catch (error) {
+      console.error("Error querying embeddings:", error);
+      throw new Error(
+        `Failed to get matches from embeddings: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
+  }
+
+  /**
+   * Get relevant context for a query by finding similar document chunks.
+   * This is the main method for retrieval-augmented generation (RAG).
+   *
+   * @param query - User's query text
+   * @param fileKey - File identifier for namespace
+   * @param options - Optional configuration
+   * @param options.topK - Number of top matches to retrieve (default: 5)
+   * @param options.scoreThreshold - Minimum similarity score (default: 0.7)
+   * @param options.maxContextLength - Maximum context string length (default: 3000)
+   * @returns Relevant context string for the query
+   * @throws Error if context retrieval fails
+   */
+  public async getContext(
+    query: string,
+    fileKey: string,
+    options: {
+      topK?: number;
+      scoreThreshold?: number;
+      maxContextLength?: number;
+    } = {},
+  ): Promise<string> {
+    try {
+      const {
+        topK = 5,
+        scoreThreshold = 0.7,
+        maxContextLength = 3000,
+      } = options;
+
+      console.log(`Getting context for query: "${query}"`);
+
+      // 1. Generate embeddings for the query
+      const queryEmbeddings = await openAIService.getEmbeddings(query);
+
+      // 2. Find similar document chunks
+      const matches = await this.getMatchesFromEmbeddings(
+        queryEmbeddings,
+        fileKey,
+        topK,
+        scoreThreshold,
+      );
+
+      console.log(`Found ${matches.length} qualifying matches`);
+
+      // 3. Extract and combine text from matches
+      const docs = matches.map(
+        (match) => (match.metadata as VectorMetadata).text,
+      );
+
+      // 4. Join and truncate context
+      const context = docs.join("\n").substring(0, maxContextLength);
+
+      return context;
+    } catch (error) {
+      console.error("Error getting context:", error);
+      throw new Error(
+        `Failed to get context: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
+  }
+
+  /**
+   * Get detailed context with metadata for debugging or advanced use cases.
+   * Returns both the context string and detailed match information.
+   *
+   * @param query - User's query text
+   * @param fileKey - File identifier for namespace
+   * @param options - Optional configuration (same as getContext)
+   * @returns Object containing context string and detailed matches
+   */
+  public async getDetailedContext(
+    query: string,
+    fileKey: string,
+    options: {
+      topK?: number;
+      scoreThreshold?: number;
+      maxContextLength?: number;
+    } = {},
+  ) {
+    try {
+      const {
+        topK = 5,
+        scoreThreshold = 0.7,
+        maxContextLength = 3000,
+      } = options;
+
+      const queryEmbeddings = await openAIService.getEmbeddings(query);
+      const matches = await this.getMatchesFromEmbeddings(
+        queryEmbeddings,
+        fileKey,
+        topK,
+        scoreThreshold,
+      );
+
+      const docs = matches.map(
+        (match) => (match.metadata as VectorMetadata).text,
+      );
+      const context = docs.join("\n").substring(0, maxContextLength);
+
+      return {
+        context,
+        matches: matches.map((match) => ({
+          score: match.score,
+          pageNumber: (match.metadata as VectorMetadata).pageNumber,
+          text: (match.metadata as VectorMetadata).text,
+        })),
+        totalMatches: matches.length,
+      };
+    } catch (error) {
+      console.error("Error getting detailed context:", error);
+      throw new Error(
+        `Failed to get detailed context: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }

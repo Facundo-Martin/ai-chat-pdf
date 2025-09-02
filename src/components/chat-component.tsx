@@ -75,6 +75,7 @@ export const ChatComponent = ({ chatId }: Props) => {
       {
         body: {
           model: values.model,
+          chatId: chatId,
         },
       },
     );
