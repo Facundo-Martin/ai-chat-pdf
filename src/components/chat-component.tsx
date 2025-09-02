@@ -48,8 +48,7 @@ const formSchema = z.object({
   model: modelEnum,
 });
 
-// Mock models data - replace with your actual models
-const models = [
+const AI_MODELS = [
   { id: "gpt-4", name: "GPT-4" },
   { id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo" },
   { id: "claude-3", name: "Claude 3" },
@@ -66,7 +65,7 @@ export const ChatComponent = ({ chatId }: Props) => {
     resolver: zodResolver(formSchema),
     defaultValues: {
       message: "",
-      model: "gpt-4", // Added default model value
+      model: "gpt-4",
     },
   });
 
@@ -168,7 +167,7 @@ export const ChatComponent = ({ chatId }: Props) => {
                             <PromptInputModelSelectValue />
                           </PromptInputModelSelectTrigger>
                           <PromptInputModelSelectContent>
-                            {models.map((model) => (
+                            {AI_MODELS.map((model) => (
                               <PromptInputModelSelectItem
                                 key={model.id}
                                 value={model.id}
