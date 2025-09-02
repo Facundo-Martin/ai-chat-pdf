@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   const { messages } = (await req.json()) as { messages: UIMessage[] };
 
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: openai("gpt-4o"), // Note: Honestly, I don't want to set openrouter so I'm hardcoding the model on the BE lol
     messages: convertToModelMessages(messages),
   });
 
