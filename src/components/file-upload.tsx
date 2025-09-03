@@ -1,17 +1,44 @@
 "use client";
 
-import { useDropzone } from "react-dropzone";
-import { Inbox, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useFileUpload } from "@/hooks/use-file-upload";
-import { api } from "@/trpc/react";
+
 import { cn } from "@/lib/utils";
+import { api } from "@/trpc/react";
+
+import { useFileUpload } from "@/hooks/use-file-upload";
+import { useDropzone } from "react-dropzone";
+
 import { toast } from "sonner";
+import { Inbox, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 
 export function FileUpload() {
   const router = useRouter();
-  const createChatMutation = api.chat.create.useMutation();
-  const loadIntoPineconeMutation = api.pdfFile.loadIntoPinecone.useMutation();
+
+  const embedMutation = api.pdfFile.embed.useMutation({
+    onSuccess: (result, { chatId }) => {
+      toast.success(
+        `Ready to chat! Created ${result.embeddingCount} embeddings`,
+      );
+      router.push(`/chat/${chatId}`);
+    },
+    onError: (_, { chatId }) => {
+      toast.error("Embedding generation failed, but chat was created");
+      router.push(`/chat/${chatId}`);
+    },
+  });
+
+  const createChatMutation = api.chat.create.useMutation({
+    onSuccess: async (newChat) => {
+      toast.success("Chat created successfully!");
+      embedMutation.mutate({
+        chatId: newChat.id,
+        content: newChat.content,
+      });
+    },
+    onError: () => {
+      toast.error("Failed to create chat. Please try again.");
+    },
+  });
 
   const {
     uploadFile,
@@ -21,39 +48,8 @@ export function FileUpload() {
     isSuccess,
     isError,
   } = useFileUpload({
-    onSuccess: async (fileKey, fileName) => {
-      try {
-        const newChat = await createChatMutation.mutateAsync({
-          fileKey,
-          fileName,
-        });
-
-        if (newChat) {
-          toast.success("Chat created successfully!");
-
-          // Step 2: Process the PDF
-          try {
-            console.log("🔄 Processing PDF into vector embeddings...");
-            const result = await loadIntoPineconeMutation.mutateAsync({
-              fileKey,
-            });
-
-            console.log("✅ PDF processing successful:", result);
-            toast.success(`PDF processed! Found ${result.documentCount} pages`);
-
-            router.push(`/chat/${newChat.id}`);
-          } catch (pdfError) {
-            console.error("❌ PDF processing failed:", pdfError);
-            toast.error("PDF processing failed, but chat was created");
-            // Still could redirect to chat even if PDF processing fails
-            // router.push(`/chat/${newChat.id}`);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to create chat:", error);
-        toast.error("Failed to create chat. Please try again.");
-      }
-    },
+    onSuccess: (fileKey, fileName) =>
+      createChatMutation.mutate({ fileKey, fileName }),
   });
 
   const { getRootProps, getInputProps } = useDropzone({
@@ -69,11 +65,9 @@ export function FileUpload() {
   });
 
   const isProcessing =
-    isLoading ||
-    createChatMutation.isPending ||
-    loadIntoPineconeMutation.isPending;
+    isLoading || createChatMutation.isPending || embedMutation.isPending;
   const hasError =
-    isError || createChatMutation.isError || loadIntoPineconeMutation.isError;
+    isError || createChatMutation.isError || embedMutation.isError;
 
   return (
     <div className="rounded-xl bg-white p-2">
@@ -105,8 +99,7 @@ export function FileUpload() {
               {isPreparing && "Preparing upload..."}
               {isUploading && "Uploading your PDF..."}
               {createChatMutation.isPending && "Creating chat..."}
-              {loadIntoPineconeMutation.isPending &&
-                "Processing PDF content..."}
+              {embedMutation.isPending && "Processing PDF for search..."}
             </p>
           </>
         ) : (
@@ -122,9 +115,7 @@ export function FileUpload() {
                 <p className="text-xs text-red-500">
                   {isError && "Upload failed."}
                   {createChatMutation.isError && "Chat creation failed."}
-                  {loadIntoPineconeMutation.isError &&
-                    "PDF processing failed."}{" "}
-                  Try again.
+                  {embedMutation.isError && "PDF processing failed."} Try again.
                 </p>
               </div>
             )}
