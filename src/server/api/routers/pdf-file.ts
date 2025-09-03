@@ -2,8 +2,8 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { s3Service } from "@/lib/s3-server";
-import { pineconeService } from "@/lib/pinecone";
-import { processPDFFromS3 } from "@/lib/pdf-processor";
+import { embeddings } from "@/server/db/schema";
+import { embedPDFContent } from "@/lib/openai";
 
 export const pdfFileRouter = createTRPCRouter({
   // Get presigned URL for uploading PDF
@@ -39,37 +39,50 @@ export const pdfFileRouter = createTRPCRouter({
       }
     }),
 
-  loadIntoPinecone: protectedProcedure
+  embed: protectedProcedure
     .input(
       z.object({
-        fileKey: z.string().min(1),
+        chatId: z.number().min(1),
+        content: z.string().min(1),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        // Step 1: Download from S3
-        const s3Object = await s3Service.getObject(input.fileKey);
+        const embeddingData = await embedPDFContent(input.content);
 
-        // Step 2: Process PDF (download locally + parse + format)
-        const processedDocs = await processPDFFromS3(s3Object);
+        if (embeddingData.length === 0) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "No embeddings generated from content",
+          });
+        }
 
-        // Step 3: Process and store in Pinecone
-        const result = await pineconeService.processAndStoreVectors(
-          input.fileKey,
-          processedDocs,
+        await ctx.db.insert(embeddings).values(
+          embeddingData.map((embedding) => ({
+            chatId: input.chatId,
+            content: embedding.content,
+            embedding: embedding.embedding,
+          })),
+        );
+
+        console.log(
+          `Stored ${embeddingData.length} embeddings for chat ${input.chatId}`,
         );
 
         return {
           success: true,
-          documentCount: processedDocs.length,
-          vectorCount: result.vectorCount,
-          message: `Successfully processed ${processedDocs.length} pages into ${result.vectorCount} vectors`,
+          embeddingCount: embeddingData.length,
         };
       } catch (error) {
-        console.error("❌ Error processing PDF:", error);
+        console.error("Error generating embeddings:", error);
+
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to process PDF: ${error instanceof Error ? error.message : "Unknown error"}`,
+          message: `Failed to generate embeddings: ${error instanceof Error ? error.message : "Unknown error"}`,
         });
       }
     }),
