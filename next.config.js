@@ -5,6 +5,8 @@
 import "./src/env.js";
 
 /** @type {import("next").NextConfig} */
-const config = {};
+const config = {
+  serverExternalPackages: ["pdf-parse"], // https://gitlab.com/autokent/pdf-parse/-/issues/24#note_2312753650
+};
 
 export default config;
